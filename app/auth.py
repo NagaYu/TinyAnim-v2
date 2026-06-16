@@ -34,6 +34,7 @@ log = logging.getLogger("tinyanim.auth")
 
 _MAGIC_SALT = "tinyanim-magic-link"
 _SESSION_SALT = "tinyanim-session"
+_GUEST_SALT = "tinyanim-guest"
 
 _serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
 
@@ -125,6 +126,28 @@ def send_magic_link(email: str, url: str) -> bool:
         # Surface as dev-mode fallback rather than hard-failing the request.
         log.warning("FALLBACK — magic link for %s: %s", email, url)
         return False
+
+
+# --------------------------------------------------------------------------- #
+# Anonymous (no-login) trial counter — signed cookie
+# --------------------------------------------------------------------------- #
+def read_guest_count(request: Request) -> int:
+    """Return how many free compressions this guest has used this period."""
+    token = request.cookies.get(settings.ANON_COOKIE)
+    if not token:
+        return 0
+    try:
+        data = _serializer.loads(
+            token, salt=_GUEST_SALT, max_age=settings.ANON_PERIOD_SECONDS
+        )
+        return int(data.get("c", 0))
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        # Expired/tampered cookie → treat as a fresh guest (period reset).
+        return 0
+
+
+def make_guest_cookie(count: int) -> str:
+    return _serializer.dumps({"c": count}, salt=_GUEST_SALT)
 
 
 # --------------------------------------------------------------------------- #

@@ -45,6 +45,15 @@ class Settings:
     SESSION_COOKIE: str = "tinyanim_session"
     COOKIE_SECURE: bool = _bool("TINYANIM_COOKIE_SECURE", default=False)
 
+    # -- anonymous (no-login) trial -------------------------------------- #
+    # Let first-time visitors compress a few files with no account, then nudge
+    # them to sign up. Tracked in a signed cookie that resets after the period
+    # (clearing cookies resets it — acceptable for a free funnel, not a hard gate).
+    ANON_FREE_LIMIT: int = int(os.environ.get("TINYANIM_ANON_LIMIT", 3))
+    ANON_PERIOD_SECONDS: int = int(os.environ.get("TINYANIM_ANON_PERIOD", 60 * 60 * 24))  # daily
+    ANON_COOKIE: str = "tinyanim_guest"
+    ANON_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024  # 5 MB, same as Free plan
+
     # -- email (magic links) --------------------------------------------- #
     # If RESEND_API_KEY is unset we run in "dev email" mode: the magic link is
     # written to the server log and surfaced in the API response instead of

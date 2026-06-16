@@ -29,9 +29,6 @@
     .drop .title { font-size:17px; font-weight:600; }
     .drop .hint { font-size:13px; color: var(--text-faint); margin-top:8px; }
     .drop input { display:none; }
-    .signin-cta { text-align:center; padding:48px 32px; border:1.5px dashed var(--border-strong);
-      border-radius: var(--radius); background: linear-gradient(180deg, var(--card), var(--bg-elev)); }
-    .signin-cta p { color: var(--text-dim); margin: 10px 0 18px; }
     .results { margin-top:28px; display:flex; flex-direction:column; gap:14px; }
     .result { background: var(--card); border:1px solid var(--border); border-radius: var(--radius); padding:20px 22px;
       opacity:0; transform: translateY(8px); animation: rise .45s cubic-bezier(.2,.7,.2,1) forwards; }
@@ -99,25 +96,24 @@
     {% elif usage %}
     <div class="usage"><span>✦ Pro — unlimited optimizations · up to {{ plan.max_upload_mb }} MB</span></div>
     {% endif %}
-
-    <label class="drop" id="drop">
-      <div class="icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 16V4M12 4l-5 5M12 4l5 5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>
-        </svg>
-      </div>
-      <div class="title">Drag &amp; drop, or click to choose</div>
-      <div class="hint">.json (Lottie) &amp; .svg · up to {{ plan.max_upload_mb }} MB each · multiple files OK</div>
-      <input type="file" id="file" accept=".json,.svg,application/json,image/svg+xml" multiple />
-    </label>
-    <div class="results" id="results"></div>
   {% else %}
-    <div class="signin-cta">
-      <div class="title" style="font-size:18px;font-weight:600">Sign in to start compressing</div>
-      <p>Free plan: 20 files / month, up to 5 MB each. No credit card.</p>
-      <a class="btn" href="/login">Sign in with email →</a>
+    <div class="usage">
+      <span>✨ <b style="color:var(--text)">No sign-up needed</b> — {{ guest_remaining }} of {{ anon_limit }} free tries left today</span>
+      <a href="/login" style="color:var(--accent);margin-left:auto">Sign in for 20/mo →</a>
     </div>
   {% endif %}
+
+  <label class="drop" id="drop">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4M12 4l-5 5M12 4l5 5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>
+      </svg>
+    </div>
+    <div class="title">Drag &amp; drop, or click to choose</div>
+    <div class="hint">.json (Lottie) &amp; .svg · up to {{ plan.max_upload_mb if user else anon_max_mb }} MB each · multiple files OK</div>
+    <input type="file" id="file" accept=".json,.svg,application/json,image/svg+xml" multiple />
+  </label>
+  <div class="results" id="results"></div>
 
   <section class="pricing" id="pricing">
     <h2>Simple, honest pricing</h2>
@@ -156,8 +152,8 @@
 {% endblock %}
 
 {% block scripts %}
-{% if user %}
 <script>
+  const isLoggedIn = {{ 'true' if user else 'false' }};
   const drop = document.getElementById('drop');
   const input = document.getElementById('file');
   const results = document.getElementById('results');
@@ -181,13 +177,19 @@
       renderSuccess(card,data); refreshStats();
     } catch(err){
       card.classList.add('error');
-      const upsell = (err.status===402) ? ` <a href="#pricing">Upgrade to Pro →</a>` : '';
+      let upsell = '';
+      if(err.status===402){
+        upsell = isLoggedIn ? ` <a href="#pricing">Upgrade to Pro →</a>` : ` <a href="/login">Sign in free →</a>`;
+      }
       card.innerHTML = `<div class="result-head"><div class="fname">${escapeHtml(file.name)}</div></div>
         <div class="errmsg">⚠ ${escapeHtml(err.msg||String(err))}${upsell}</div>`;
     }
   }
   function renderSuccess(card,d){
-    const rem = (d.remaining!==null && d.remaining!==undefined) ? ` · ${d.remaining} left this month` : '';
+    let rem = '';
+    if(d.remaining!==null && d.remaining!==undefined){
+      rem = (d.plan==='guest') ? ` · ${d.remaining} free tries left` : ` · ${d.remaining} left this month`;
+    }
     card.innerHTML = `
       <div class="result-head">
         <div class="fname"><span class="tag ${d.kind}">${d.kind}</span>${escapeHtml(d.output_filename)}</div>
@@ -214,5 +216,4 @@
   }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 </script>
-{% endif %}
 {% endblock %}

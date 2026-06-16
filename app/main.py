@@ -152,10 +152,13 @@ def index(
 ) -> HTMLResponse:
     stats = models.get_stats(session)
     usage = None
+    guest_remaining = None
     if user is not None:
         user.reset_usage_if_needed()
         session.commit()
         usage = {"count": user.usage_count, "limit": user.plan_obj.monthly_limit}
+    else:
+        guest_remaining = max(settings.ANON_FREE_LIMIT - auth.read_guest_count(request), 0)
     return templates.TemplateResponse(
         "index.html",
         {
@@ -165,6 +168,9 @@ def index(
             "plan": user.plan_obj if user else get_plan(None),
             "usage": usage,
             "billing_enabled": settings.billing_enabled,
+            "anon_limit": settings.ANON_FREE_LIMIT,
+            "guest_remaining": guest_remaining,
+            "anon_max_mb": settings.ANON_MAX_UPLOAD_BYTES // (1024 * 1024),
         },
     )
 
@@ -320,7 +326,7 @@ async def api_optimize(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ) -> JSONResponse:
-    # Resolve the caller: API key (Pro, programmatic) or session cookie (web).
+    # Resolve the caller: API key (Pro) → session cookie (web) → anonymous guest.
     api_user = _resolve_api_user(request, session)
     if api_user is not None:
         user = api_user
@@ -328,24 +334,37 @@ async def api_optimize(
             raise HTTPException(status_code=402, detail="API access requires the Pro plan.")
     else:
         user = auth.current_user(request, session)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Please sign in to optimize files.")
 
-    plan = user.plan_obj
-
-    # Usage gate (rolling 30-day window) for limited plans.
-    user.reset_usage_if_needed()
-    if plan.monthly_limit is not None and user.usage_count >= plan.monthly_limit:
+    # --- anonymous guest path (no account) ------------------------------- #
+    guest_count: int | None = None
+    if user is None:
+        guest_count = auth.read_guest_count(request)
+        if guest_count >= settings.ANON_FREE_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"You've used your {settings.ANON_FREE_LIMIT} free tries. "
+                    "Sign in free for 20 files / month."
+                ),
+            )
+        max_bytes = settings.ANON_MAX_UPLOAD_BYTES
+        plan = get_plan(None)
+    else:
+        plan = user.plan_obj
+        # Usage gate (rolling 30-day window) for limited plans.
+        user.reset_usage_if_needed()
+        if plan.monthly_limit is not None and user.usage_count >= plan.monthly_limit:
+            session.commit()
+            raise HTTPException(
+                status_code=402,
+                detail=f"You've used all {plan.monthly_limit} optimizations this month. Upgrade to Pro for unlimited.",
+            )
         session.commit()
-        raise HTTPException(
-            status_code=402,
-            detail=f"You've used all {plan.monthly_limit} optimizations this month. Upgrade to Pro for unlimited.",
-        )
-    session.commit()
+        max_bytes = plan.max_upload_bytes
 
     ext = _safe_extension(file.filename or "")
     kind = ALLOWED_EXTENSIONS[ext]
-    raw = await _read_capped(file, plan.max_upload_bytes)
+    raw = await _read_capped(file, max_bytes)
 
     if not _sniff_matches(kind, raw):
         raise HTTPException(status_code=400, detail="File content does not match its extension.")
@@ -372,11 +391,19 @@ async def api_optimize(
     out_name = _output_filename(file.filename or "file", kind)
     token = downloads.put(result.data, out_name, media_type)
 
-    remaining = None
-    if plan.monthly_limit is not None:
-        remaining = max(plan.monthly_limit - user.usage_count, 0)
+    # Remaining quota: guest trial vs. signed-in limited plan vs. unlimited.
+    if user is None:
+        plan_key = "guest"
+        remaining = max(settings.ANON_FREE_LIMIT - (guest_count + 1), 0)
+    else:
+        plan_key = plan.key
+        remaining = (
+            max(plan.monthly_limit - user.usage_count, 0)
+            if plan.monthly_limit is not None
+            else None
+        )
 
-    return JSONResponse(
+    response = JSONResponse(
         {
             "kind": kind,
             "original_filename": PurePosixPath(file.filename or "file").name,
@@ -386,10 +413,22 @@ async def api_optimize(
             "saved_bytes": result.saved_bytes,
             "reduction_percent": result.reduction_percent,
             "download_token": token,
-            "plan": plan.key,
+            "plan": plan_key,
             "remaining": remaining,
         }
     )
+
+    # Persist the guest's incremented trial count in a signed cookie.
+    if user is None:
+        response.set_cookie(
+            settings.ANON_COOKIE,
+            auth.make_guest_cookie(guest_count + 1),
+            max_age=settings.ANON_PERIOD_SECONDS,
+            httponly=True,
+            secure=settings.COOKIE_SECURE,
+            samesite="lax",
+        )
+    return response
 
 
 @app.get("/api/download/{token}")
