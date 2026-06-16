@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+tinyanim.db
+.DS_Store
+
+.claude/
