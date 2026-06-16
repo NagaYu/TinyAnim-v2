@@ -15,6 +15,10 @@ eye and the renderer never use:
 A solid, Apple/Vercel-grade dark UI lets you drag & drop files and instantly see
 the before/after size, reduction percentage and a glowing download button.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="TinyAnim — drag & drop dark-mode UI showing an 83% Lottie reduction" width="640" />
+</p>
+
 ---
 
 ## Features
