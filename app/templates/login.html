@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Sign in — TinyAnim{% endblock %}
+{% block style %}
+  .auth { max-width: 420px; margin: 60px auto; background: var(--card); border:1px solid var(--border);
+    border-radius: var(--radius); padding: 36px; }
+  .auth h1 { font-size: 26px; letter-spacing:-.02em; }
+  .auth p { color: var(--text-dim); margin-top: 8px; font-size: 14px; }
+  .auth form { margin-top: 24px; display:flex; flex-direction:column; gap:12px; }
+  .auth input { background: var(--bg-elev); border:1px solid var(--border-strong); color: var(--text);
+    border-radius: 11px; padding: 13px 15px; font-size: 15px; font-family: var(--font); }
+  .auth input:focus { outline:none; border-color: var(--accent); box-shadow:0 0 0 3px rgba(109,94,252,.15); }
+  .auth .btn { justify-content:center; padding: 13px; font-size:15px; }
+  .err { color:#ff8b8b; font-size:13px; }
+  .ok { background: rgba(47,224,122,.08); border:1px solid rgba(47,224,122,.3); border-radius:12px;
+    padding:18px; margin-top:24px; }
+  .ok b { color: var(--good); }
+  .devlink { margin-top:14px; font-size:12px; word-break:break-all; }
+  .devlink a { color: var(--accent); }
+{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="auth">
+    {% if sent %}
+      <h1>Check your inbox</h1>
+      <div class="ok">
+        <p>We sent a sign-in link to <b>{{ email }}</b>. Click it to continue — it expires in 15 minutes.</p>
+        {% if dev_link %}
+          <div class="devlink">
+            <b style="color:var(--warn)">Dev mode (no email provider configured):</b><br/>
+            <a href="{{ dev_link }}">{{ dev_link }}</a>
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <h1>Sign in to TinyAnim</h1>
+      <p>No password needed. We'll email you a one-tap sign-in link.</p>
+      {% if error %}<p class="err">{{ error }}</p>{% endif %}
+      <form action="/auth/request" method="post">
+        <input type="email" name="email" placeholder="you@example.com" required autofocus />
+        <button class="btn" type="submit">Send me a sign-in link</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -3,3 +3,8 @@ uvicorn[standard]==0.34.0
 jinja2==3.1.5
 python-multipart==0.0.20
 sqlalchemy==2.0.36
+itsdangerous==2.2.0
+email-validator==2.2.0
+stripe==11.4.1
+httpx==0.28.1
+psycopg2-binary==2.9.10

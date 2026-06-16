@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Account — TinyAnim{% endblock %}
+{% block style %}
+  .panel { background: var(--card); border:1px solid var(--border); border-radius: var(--radius); padding:28px; margin-bottom:18px; }
+  .panel h2 { font-size:16px; letter-spacing:.02em; margin-bottom:16px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--border); font-size:14px; }
+  .row:first-of-type { border-top:none; }
+  .row .k { color: var(--text-dim); }
+  .row .v { font-weight:600; }
+  .ubar { height:8px; border-radius:999px; background: rgba(255,255,255,.06); overflow:hidden; margin-top:12px; }
+  .ubar > span { display:block; height:100%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); }
+  .btn { justify-content:center; }
+  .muted { color: var(--text-faint); font-size:13px; }
+  .key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; background: var(--bg-elev);
+    border:1px solid var(--border-strong); border-radius:10px; padding:12px 14px; word-break:break-all; }
+  .keyrow { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; font-size:13px; color: var(--text-dim); }
+  .banner { border-radius:12px; padding:14px 16px; margin-bottom:18px; font-size:14px; }
+  .banner.ok { background: rgba(47,224,122,.08); border:1px solid rgba(47,224,122,.3); }
+  .banner.warn { background: rgba(255,176,32,.08); border:1px solid rgba(255,176,32,.3); }
+  code { background: var(--bg-elev); padding:2px 6px; border-radius:6px; font-size:12px; }
+{% endblock %}
+{% block body %}
+<div class="wrap">
+  <h1 style="font-size:30px;letter-spacing:-.02em;margin-bottom:6px">Account</h1>
+  <p class="muted" style="margin-bottom:24px">{{ user.email }}</p>
+
+  {% if checkout == 'success' %}<div class="banner ok">✓ Welcome to Pro! Your plan is now active.</div>{% endif %}
+  {% if checkout == 'cancel' %}<div class="banner warn">Checkout cancelled — you're still on the Free plan.</div>{% endif %}
+
+  <div class="panel">
+    <h2>Plan</h2>
+    <div class="row"><span class="k">Current plan</span><span class="v"><span class="pill {{ 'pro' if plan.key=='pro' else 'free' }}">{{ plan.name }}</span></span></div>
+    {% if plan.monthly_limit %}
+    <div class="row"><span class="k">Usage this month</span><span class="v">{{ usage.count }} / {{ usage.limit }}</span></div>
+    <div class="ubar"><span style="width: {{ (usage.count/usage.limit*100) if usage.limit else 0 }}%"></span></div>
+    {% else %}
+    <div class="row"><span class="k">Usage this month</span><span class="v">{{ usage.count }} (unlimited)</span></div>
+    {% endif %}
+    <div class="row"><span class="k">Max file size</span><span class="v">{{ plan.max_upload_mb }} MB</span></div>
+
+    <div style="margin-top:20px">
+      {% if plan.key == 'pro' %}
+        {% if billing_enabled %}
+        <form action="/billing/portal" method="post"><button class="btn ghost" type="submit" style="width:100%">Manage subscription</button></form>
+        {% endif %}
+      {% else %}
+        {% if billing_enabled %}
+        <form action="/billing/checkout" method="post"><button class="btn" type="submit" style="width:100%">Upgrade to Pro — $9/mo</button></form>
+        {% else %}
+        <div class="banner warn" style="margin:0">Billing isn't configured on this instance yet. Set the Stripe env vars to enable upgrades.</div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if plan.allow_api %}
+  <div class="panel">
+    <h2>API keys</h2>
+    <p class="muted">Use your key to optimize programmatically:</p>
+    <p class="muted" style="margin:8px 0 16px"><code>curl -H "Authorization: Bearer YOUR_KEY" -F "file=@anim.json" {{ request.base_url }}api/optimize</code></p>
+
+    {% if new_key %}
+    <div class="banner ok">
+      <b>New key — copy it now, it won't be shown again:</b>
+      <div class="key" style="margin-top:10px">{{ new_key }}</div>
+    </div>
+    {% endif %}
+
+    {% for k in api_keys %}
+    <div class="keyrow"><span>{{ k.prefix }}…</span><span>created {{ k.created_at.strftime('%Y-%m-%d') }}</span></div>
+    {% else %}
+    <p class="muted">No keys yet.</p>
+    {% endfor %}
+
+    <form action="/api/keys" method="post" style="margin-top:16px"><button class="btn" type="submit" style="width:100%">Generate new API key</button></form>
+  </div>
+  {% else %}
+  <div class="panel">
+    <h2>API access</h2>
+    <p class="muted">Programmatic API access is a Pro feature. Upgrade to generate API keys.</p>
+  </div>
+  {% endif %}
+
+  <p style="text-align:center;margin-top:8px"><a href="/" class="muted">← Back to compressor</a></p>
+</div>
+{% endblock %}
