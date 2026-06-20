@@ -47,6 +47,8 @@ ALLOWED_EXTENSIONS = {
     ".avif": "image",
     ".bmp": "image",
     ".tiff": "image",
+    # RAW — embedded preview extracted, then re-encoded to AVIF/WebP.
+    ".dng": "dng",
     # Documents — Ghostscript recompresses embedded images.
     ".pdf": "pdf",
 }
@@ -161,6 +163,8 @@ def _sniff_matches(kind: str, raw: bytes) -> bool:
         if raw[4:8] == b"ftyp":  # HEIC / AVIF / other ISO-BMFF
             return True
         return False
+    if kind == "dng":  # DNG is TIFF-based
+        return raw[:4] in (b"II*\x00", b"MM\x00*")
     if kind == "pdf":
         return raw[:5] == b"%PDF-"
     return False
@@ -174,7 +178,7 @@ def _output_filename(original: str, kind: str, output_format: str | None = None)
         ext = ".svg"
     elif kind == "pdf":
         ext = ".pdf"
-    elif kind == "image":
+    elif kind in ("image", "dng"):
         # Converted output (webp/avif) — or keep original ext if unchanged.
         ext = f".{output_format}" if output_format else PurePosixPath(original or "f.png").suffix or ".png"
     else:

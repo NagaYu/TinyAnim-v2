@@ -20,7 +20,11 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -341,21 +345,29 @@ class ImageOptimizer:
         if not _PIL_OK:
             raise ValueError("Image optimization is not available on this server.")
 
-        original_size = len(raw)
         try:
             img = Image.open(io.BytesIO(raw))
             img.load()
         except Exception as exc:
             raise ValueError(f"Could not read image: {exc}") from exc
 
+        # Honor EXIF orientation before dropping metadata.
+        img = ImageOps.exif_transpose(img)
+        return self.encode_best(img, original_size=len(raw), original_bytes=raw)
+
+    def encode_best(
+        self, img: "Image.Image", *, original_size: int, original_bytes: bytes
+    ) -> OptimizationResult:
+        """Encode ``img`` to the smallest of WebP/AVIF (never larger than input).
+
+        Shared by the raster-image and RAW/DNG paths.
+        """
         w, h = img.size
         if w * h > self.MAX_PIXELS:
             raise ValueError(
                 f"Image is too large ({w}x{h}). Max {self.MAX_PIXELS // 1_000_000} megapixels."
             )
 
-        # Honor EXIF orientation, then drop all metadata by working on a copy.
-        img = ImageOps.exif_transpose(img)
         has_alpha = img.mode in ("RGBA", "LA", "P") and (
             "transparency" in img.info or img.mode in ("RGBA", "LA")
         )
@@ -380,7 +392,7 @@ class ImageOptimizer:
         # Never hand back something bigger than what we received.
         if len(best_bytes) >= original_size:
             return OptimizationResult(
-                data=raw, original_size=original_size, optimized_size=original_size
+                data=original_bytes, original_size=original_size, optimized_size=original_size
             )
 
         return OptimizationResult(
@@ -391,15 +403,55 @@ class ImageOptimizer:
         )
 
 
+class DngOptimizer:
+    """Convert a RAW/DNG to a small web image via its embedded preview.
+
+    RAW files (DNG, and other LibRaw-supported formats) are huge and meant for
+    editing. We extract the embedded full-size preview — fast and low-memory,
+    no demosaicing — and re-encode it to AVIF/WebP. The output is a web image,
+    not an editable negative.
+    """
+
+    def optimize(self, raw: bytes) -> OptimizationResult:
+        if not _PIL_OK:
+            raise ValueError("Image optimization is not available on this server.")
+        try:
+            import rawpy
+        except Exception as exc:  # pragma: no cover
+            raise ValueError("RAW/DNG support is not available on this server.") from exc
+
+        original_size = len(raw)
+        # LibRaw is happiest with a real file; use a temp path.
+        with tempfile.NamedTemporaryFile(suffix=".dng") as tmp:
+            tmp.write(raw)
+            tmp.flush()
+            try:
+                with rawpy.imread(tmp.name) as raw_img:
+                    thumb = raw_img.extract_thumb()
+            except Exception as exc:
+                raise ValueError(f"Could not read RAW/DNG: {exc}") from exc
+
+        if thumb.format == rawpy.ThumbFormat.JPEG:
+            try:
+                img = Image.open(io.BytesIO(thumb.data))
+                img.load()
+            except Exception as exc:
+                raise ValueError(f"Could not read embedded preview: {exc}") from exc
+        else:  # BITMAP (raw RGB array)
+            try:
+                img = Image.fromarray(thumb.data)
+            except Exception as exc:
+                raise ValueError(f"Could not read embedded preview: {exc}") from exc
+
+        img = ImageOps.exif_transpose(img)
+        return ImageOptimizer().encode_best(
+            img, original_size=original_size, original_bytes=raw
+        )
+
+
 # --------------------------------------------------------------------------- #
 # PDF optimizer (Ghostscript — downsamples & recompresses embedded images)
 # --------------------------------------------------------------------------- #
-import os  # noqa: E402
-import shutil  # noqa: E402
-import subprocess  # noqa: E402
-import tempfile  # noqa: E402
-
-
 class PdfOptimizer:
     """Shrink PDFs via Ghostscript's pdfwrite device.
 
@@ -485,6 +537,8 @@ def optimize_file(raw: bytes, kind: str, *, precision: int | None = None) -> Opt
         return opt.optimize(raw)
     if kind == "image":
         return ImageOptimizer().optimize(raw)
+    if kind == "dng":
+        return DngOptimizer().optimize(raw)
     if kind == "pdf":
         return PdfOptimizer().optimize(raw)
     raise ValueError(f"Unsupported file kind: {kind!r}")

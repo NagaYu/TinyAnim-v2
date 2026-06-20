@@ -40,6 +40,7 @@
     .tag.lottie { background: rgba(109,94,252,.18); color:#b3a8ff; }
     .tag.svg { background: rgba(0,216,194,.16); color:#6ff0e0; }
     .tag.image { background: rgba(255,176,32,.16); color:#ffd28a; }
+    .tag.dng { background: rgba(255,176,32,.16); color:#ffd28a; }
     .tag.pdf { background: rgba(255,90,90,.16); color:#ff9d9d; }
     .pct { font-size:30px; font-weight:800; letter-spacing:-.03em; white-space:nowrap;
       background: linear-gradient(135deg,var(--good),var(--accent-2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
@@ -112,8 +113,8 @@
       </svg>
     </div>
     <div class="title">Drag &amp; drop, or click to choose</div>
-    <div class="hint">Lottie · SVG · JPG · PNG · HEIC · AVIF · PDF · up to {{ plan.max_upload_mb if user else anon_max_mb }} MB each · multiple files OK</div>
-    <input type="file" id="file" accept=".json,.svg,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.bmp,.tiff,.pdf,application/json,image/svg+xml,image/*,application/pdf" multiple />
+    <div class="hint">Lottie · SVG · JPG · PNG · HEIC · AVIF · DNG · PDF · up to {{ plan.max_upload_mb if user else anon_max_mb }} MB each · multiple files OK</div>
+    <input type="file" id="file" accept=".json,.svg,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.bmp,.tiff,.dng,.pdf,application/json,image/svg+xml,image/*,application/pdf,.dng" multiple />
   </label>
   <div class="results" id="results"></div>
 
@@ -192,7 +193,7 @@
     if(d.remaining!==null && d.remaining!==undefined){
       rem = (d.plan==='guest') ? ` · ${d.remaining} free tries left` : ` · ${d.remaining} left this month`;
     }
-    const tagText = (d.kind==='image' && d.output_format) ? d.output_format : d.kind;
+    const tagText = (['image','dng'].includes(d.kind) && d.output_format) ? d.output_format : d.kind;
     card.innerHTML = `
       <div class="result-head">
         <div class="fname"><span class="tag ${d.kind}">${escapeHtml(tagText)}</span>${escapeHtml(d.output_filename)}</div>

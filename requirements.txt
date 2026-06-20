@@ -11,3 +11,4 @@ psycopg2-binary==2.9.10
 pillow==12.2.0
 pillow-heif==1.4.0
 pillow-avif-plugin==1.5.5
+rawpy==0.27.0
