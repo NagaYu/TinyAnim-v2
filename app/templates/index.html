@@ -39,6 +39,7 @@
     .tag { font-size:10px; font-weight:700; letter-spacing:.06em; padding:3px 8px; border-radius:6px; text-transform:uppercase; }
     .tag.lottie { background: rgba(109,94,252,.18); color:#b3a8ff; }
     .tag.svg { background: rgba(0,216,194,.16); color:#6ff0e0; }
+    .tag.image { background: rgba(255,176,32,.16); color:#ffd28a; }
     .pct { font-size:30px; font-weight:800; letter-spacing:-.03em; white-space:nowrap;
       background: linear-gradient(135deg,var(--good),var(--accent-2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
     .bar { height:8px; border-radius:999px; background: rgba(255,255,255,.06); margin:16px 0 14px; overflow:hidden; }
@@ -76,9 +77,9 @@
 
 {% block body %}
 <div class="wrap">
-  <span class="badge"><span class="dot"></span> 100% visual fidelity · uploads never stored</span>
-  <h1>Make your animations<br/>weightless.</h1>
-  <p class="sub">Drop a <b>Lottie</b> or <b>SVG</b> file and TinyAnim strips invisible precision and editor cruft — shrinking it by up to <b>80%</b> with <b>zero</b> visible change.</p>
+  <span class="badge"><span class="dot"></span> Lossless vectors · smart image compression · uploads never stored</span>
+  <h1>Make every asset<br/>weightless.</h1>
+  <p class="sub">Drop a <b>Lottie</b>, <b>SVG</b> or image (<b>JPG, PNG, HEIC, AVIF…</b>). Vectors stay pixel-identical; photos are re-encoded to the smallest modern codec — often <b>up to 90%</b> smaller.</p>
 
   <div class="stats">
     <div class="stat"><div class="num" id="stat-saved">{{ "%.1f"|format(stats.total_saved_bytes / 1024) }} KB</div><div class="lbl">TOTAL SAVED</div></div>
@@ -110,8 +111,8 @@
       </svg>
     </div>
     <div class="title">Drag &amp; drop, or click to choose</div>
-    <div class="hint">.json (Lottie) &amp; .svg · up to {{ plan.max_upload_mb if user else anon_max_mb }} MB each · multiple files OK</div>
-    <input type="file" id="file" accept=".json,.svg,application/json,image/svg+xml" multiple />
+    <div class="hint">Lottie · SVG · JPG · PNG · HEIC · AVIF · up to {{ plan.max_upload_mb if user else anon_max_mb }} MB each · multiple files OK</div>
+    <input type="file" id="file" accept=".json,.svg,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.bmp,.tiff,application/json,image/svg+xml,image/*" multiple />
   </label>
   <div class="results" id="results"></div>
 
@@ -190,9 +191,10 @@
     if(d.remaining!==null && d.remaining!==undefined){
       rem = (d.plan==='guest') ? ` · ${d.remaining} free tries left` : ` · ${d.remaining} left this month`;
     }
+    const tagText = (d.kind==='image' && d.output_format) ? d.output_format : d.kind;
     card.innerHTML = `
       <div class="result-head">
-        <div class="fname"><span class="tag ${d.kind}">${d.kind}</span>${escapeHtml(d.output_filename)}</div>
+        <div class="fname"><span class="tag ${d.kind}">${escapeHtml(tagText)}</span>${escapeHtml(d.output_filename)}</div>
         <div class="pct">−${d.reduction_percent}%</div>
       </div>
       <div class="bar"><span></span></div>

@@ -34,7 +34,35 @@ from .plans import PLAN_PRO, get_plan
 
 logging.basicConfig(level=logging.INFO)
 
-ALLOWED_EXTENSIONS = {".json": "lottie", ".svg": "svg"}
+ALLOWED_EXTENSIONS = {
+    ".json": "lottie",
+    ".svg": "svg",
+    # Raster images — re-encoded (lossy) to the smallest modern codec.
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".png": "image",
+    ".webp": "image",
+    ".heic": "image",
+    ".heif": "image",
+    ".avif": "image",
+    ".bmp": "image",
+    ".tiff": "image",
+}
+
+# Magic-byte prefixes for image content sniffing.
+_IMAGE_SIGNATURES = (
+    b"\xff\xd8\xff",          # JPEG
+    b"\x89PNG\r\n\x1a\n",     # PNG
+    b"BM",                    # BMP
+    b"II*\x00", b"MM\x00*",  # TIFF
+)
+
+_IMAGE_MEDIA_TYPES = {
+    "webp": "image/webp",
+    "avif": "image/avif",
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+}
 
 _BASE_DIR = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(_BASE_DIR, "templates"))
@@ -116,18 +144,36 @@ async def _read_capped(upload: UploadFile, max_bytes: int) -> bytes:
 
 
 def _sniff_matches(kind: str, raw: bytes) -> bool:
-    head = raw[:512].lstrip()
     if kind == "lottie":
+        head = raw[:512].lstrip()
         return head[:1] in (b"{", b"[")
     if kind == "svg":
-        lowered = head.lower()
+        lowered = raw[:512].lstrip().lower()
         return lowered.startswith(b"<?xml") or lowered.startswith(b"<svg") or b"<svg" in raw[:2048].lower()
+    if kind == "image":
+        head = raw[:16]
+        if head.startswith(_IMAGE_SIGNATURES):
+            return True
+        if head[:4] == b"RIFF" and raw[8:12] == b"WEBP":  # WebP
+            return True
+        if raw[4:8] == b"ftyp":  # HEIC / AVIF / other ISO-BMFF
+            return True
+        return False
     return False
 
 
-def _output_filename(original: str, kind: str) -> str:
+def _output_filename(original: str, kind: str, output_format: str | None = None) -> str:
     stem = PurePosixPath(PurePosixPath(original or "file").name).stem or "file"
-    return f"{stem}.min{'.json' if kind == 'lottie' else '.svg'}"
+    if kind == "lottie":
+        ext = ".json"
+    elif kind == "svg":
+        ext = ".svg"
+    elif kind == "image":
+        # Converted output (webp/avif) — or keep original ext if unchanged.
+        ext = f".{output_format}" if output_format else PurePosixPath(original or "f.png").suffix or ".png"
+    else:
+        ext = PurePosixPath(original or "file").suffix or ""
+    return f"{stem}.min{ext}"
 
 
 def _resolve_api_user(request: Request, session: Session) -> User | None:
@@ -387,8 +433,13 @@ async def api_optimize(
         user=user,
     )
 
-    media_type = "application/json" if kind == "lottie" else "image/svg+xml"
-    out_name = _output_filename(file.filename or "file", kind)
+    if kind == "lottie":
+        media_type = "application/json"
+    elif kind == "svg":
+        media_type = "image/svg+xml"
+    else:  # image
+        media_type = _IMAGE_MEDIA_TYPES.get(result.output_format or "", "application/octet-stream")
+    out_name = _output_filename(file.filename or "file", kind, result.output_format)
     token = downloads.put(result.data, out_name, media_type)
 
     # Remaining quota: guest trial vs. signed-in limited plan vs. unlimited.
@@ -415,6 +466,7 @@ async def api_optimize(
             "download_token": token,
             "plan": plan_key,
             "remaining": remaining,
+            "output_format": result.output_format,
         }
     )
 

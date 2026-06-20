@@ -18,6 +18,7 @@ reused in isolation from the web layer.
 
 from __future__ import annotations
 
+import io
 import json
 import re
 from dataclasses import dataclass
@@ -46,6 +47,9 @@ class OptimizationResult:
     data: bytes
     original_size: int
     optimized_size: int
+    #: For image conversions the output format/extension may differ from the
+    #: input (e.g. a .png is served back as .webp). None means "unchanged".
+    output_format: str | None = None
 
     @property
     def saved_bytes(self) -> int:
@@ -293,14 +297,111 @@ class SVGOptimizer:
 
 
 # --------------------------------------------------------------------------- #
+# Image optimizer (lossy / format conversion)
+# --------------------------------------------------------------------------- #
+# Pillow + optional HEIC/AVIF plugins. Registration is best-effort so the module
+# still imports (and Lottie/SVG keep working) if a plugin is unavailable.
+try:
+    from PIL import Image, ImageOps
+
+    _PIL_OK = True
+except Exception:  # pragma: no cover
+    _PIL_OK = False
+
+if _PIL_OK:
+    try:
+        import pillow_heif  # noqa: F401
+
+        pillow_heif.register_heif_opener()
+    except Exception:  # pragma: no cover
+        pass
+    try:
+        import pillow_avif  # noqa: F401  (registers the AVIF plugin on import)
+    except Exception:  # pragma: no cover
+        pass
+
+
+class ImageOptimizer:
+    """Shrink raster images by re-encoding to the smallest modern codec.
+
+    Unlike the Lottie/SVG optimizers this is *lossy*: it re-encodes the pixels.
+    It encodes WebP and (when available) AVIF, then serves whichever is smallest
+    — but never larger than the original, in which case the input is returned
+    untouched. EXIF/metadata is dropped.
+    """
+
+    #: Reject absurdly large images to bound memory/CPU on small instances.
+    MAX_PIXELS = 30_000_000  # ~30 MP
+
+    def __init__(self, quality: int = 80, avif_quality: int = 55) -> None:
+        self.quality = quality
+        self.avif_quality = avif_quality
+
+    def optimize(self, raw: bytes) -> OptimizationResult:
+        if not _PIL_OK:
+            raise ValueError("Image optimization is not available on this server.")
+
+        original_size = len(raw)
+        try:
+            img = Image.open(io.BytesIO(raw))
+            img.load()
+        except Exception as exc:
+            raise ValueError(f"Could not read image: {exc}") from exc
+
+        w, h = img.size
+        if w * h > self.MAX_PIXELS:
+            raise ValueError(
+                f"Image is too large ({w}x{h}). Max {self.MAX_PIXELS // 1_000_000} megapixels."
+            )
+
+        # Honor EXIF orientation, then drop all metadata by working on a copy.
+        img = ImageOps.exif_transpose(img)
+        has_alpha = img.mode in ("RGBA", "LA", "P") and (
+            "transparency" in img.info or img.mode in ("RGBA", "LA")
+        )
+        img = img.convert("RGBA" if has_alpha else "RGB")
+
+        candidates: list[tuple[str, bytes]] = []
+
+        webp = io.BytesIO()
+        img.save(webp, "WEBP", quality=self.quality, method=6)
+        candidates.append(("webp", webp.getvalue()))
+
+        try:
+            avif = io.BytesIO()
+            # speed 6 keeps encode time sane on small CPUs.
+            img.save(avif, "AVIF", quality=self.avif_quality, speed=6)
+            candidates.append(("avif", avif.getvalue()))
+        except Exception:
+            pass  # AVIF plugin missing or encode failed — WebP still covers us.
+
+        best_fmt, best_bytes = min(candidates, key=lambda c: len(c[1]))
+
+        # Never hand back something bigger than what we received.
+        if len(best_bytes) >= original_size:
+            return OptimizationResult(
+                data=raw, original_size=original_size, optimized_size=original_size
+            )
+
+        return OptimizationResult(
+            data=best_bytes,
+            original_size=original_size,
+            optimized_size=len(best_bytes),
+            output_format=best_fmt,
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
 def optimize_file(raw: bytes, kind: str, *, precision: int | None = None) -> OptimizationResult:
-    """Optimize ``raw`` bytes for the given ``kind`` (``"lottie"`` | ``"svg"``)."""
+    """Optimize ``raw`` bytes for the given ``kind`` (lottie | svg | image)."""
     if kind == "lottie":
         opt = LottieOptimizer(precision=precision if precision is not None else 3)
         return opt.optimize(raw)
     if kind == "svg":
         opt = SVGOptimizer(precision=precision if precision is not None else 2)
         return opt.optimize(raw)
+    if kind == "image":
+        return ImageOptimizer().optimize(raw)
     raise ValueError(f"Unsupported file kind: {kind!r}")

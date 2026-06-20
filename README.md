@@ -1,16 +1,17 @@
 # TinyAnim ✨
 
-**Lossless Lottie & SVG compression — make your animations weightless.**
+**Make every asset weightless — Lottie, SVG & images.**
 
-TinyAnim shrinks Lottie (JSON) and SVG files by up to **80%** while preserving
-**100% of the visual quality**. It does this by discarding only what the human
-eye and the renderer never use:
+TinyAnim shrinks your assets dramatically while keeping them looking great:
 
-- excess floating-point precision on coordinates, bezier tangents and time
-  values,
-- authoring metadata (After Effects layer names, editor namespaces, comments,
-  unreferenced `id`s, `xml:space`, `data-*` attributes, …),
-- redundant whitespace and verbose JSON formatting.
+- **Lottie (JSON) & SVG — losslessly, up to 80%.** It discards only what the
+  renderer never uses: excess float precision on coordinates/tangents/time,
+  authoring metadata (AE layer names, editor namespaces, comments, unreferenced
+  `id`s, `xml:space`, `data-*`), and verbose formatting. Pixels are identical.
+- **Images (JPG, PNG, HEIC, AVIF, WebP, …) — smart compression, often up to
+  ~90%.** Photos are re-encoded to the smallest modern codec (AVIF/WebP),
+  whichever wins, never larger than the original. This step is *lossy* (the
+  pixels are re-encoded) but tuned to be visually near-identical.
 
 A solid, Apple/Vercel-grade dark UI lets you drag & drop files and instantly see
 the before/after size, reduction percentage and a glowing download button.
