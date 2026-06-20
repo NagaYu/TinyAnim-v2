@@ -128,7 +128,7 @@
         <ul>
           <li>20 optimizations / month</li>
           <li>Up to 5 MB per file</li>
-          <li>Lottie &amp; SVG, full quality</li>
+          <li>Lottie, SVG, images &amp; PDF</li>
         </ul>
         {% if not user %}<a class="btn ghost" href="/login" style="width:100%;justify-content:center">Get started</a>{% endif %}
       </div>
@@ -137,9 +137,9 @@
         <div class="price">$9<small> / month</small></div>
         <ul>
           <li>Unlimited optimizations</li>
-          <li>Up to 50 MB per file</li>
-          <li>Batch uploads</li>
-          <li>API access (programmatic)</li>
+          <li>Up to 100 MB per file</li>
+          <li>RAW / DNG support</li>
+          <li>Batch uploads &amp; API access</li>
         </ul>
         {% if user and plan.key != 'pro' and billing_enabled %}
           <form action="/billing/checkout" method="post"><button class="btn" type="submit" style="width:100%;justify-content:center">Upgrade to Pro</button></form>

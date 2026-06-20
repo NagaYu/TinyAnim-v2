@@ -44,7 +44,7 @@ PLANS: dict[str, Plan] = {
         key=PLAN_PRO,
         name="Pro",
         monthly_limit=None,
-        max_upload_bytes=50 * _MB,
+        max_upload_bytes=100 * _MB,  # fits most RAW/DNG files
         allow_batch=True,
         allow_api=True,
     ),

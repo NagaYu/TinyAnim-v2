@@ -125,7 +125,8 @@ def _safe_extension(filename: str) -> str:
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail="Unsupported file type. Only .json (Lottie) and .svg are accepted.",
+            detail="Unsupported file type. Accepted: Lottie (.json), SVG, images "
+            "(JPG/PNG/HEIC/AVIF/WebP), DNG and PDF.",
         )
     return ext
 
@@ -138,9 +139,11 @@ async def _read_capped(upload: UploadFile, max_bytes: int) -> bytes:
             break
         buffer.extend(chunk)
         if len(buffer) > max_bytes:
+            limit_mb = max_bytes // (1024 * 1024)
+            nudge = " Upgrade to Pro for up to 100 MB (RAW/DNG)." if limit_mb < 100 else ""
             raise HTTPException(
                 status_code=413,
-                detail=f"File exceeds your plan limit of {max_bytes // (1024 * 1024)} MB.",
+                detail=f"File exceeds your {limit_mb} MB limit.{nudge}",
             )
     if not buffer:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
