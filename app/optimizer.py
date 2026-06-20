@@ -404,12 +404,15 @@ class ImageOptimizer:
 
 
 class DngOptimizer:
-    """Convert a RAW/DNG to a small web image via its embedded preview.
+    """Convert a RAW/DNG to a small web image via a half-resolution develop.
 
     RAW files (DNG, and other LibRaw-supported formats) are huge and meant for
-    editing. We extract the embedded full-size preview — fast and low-memory,
-    no demosaicing — and re-encode it to AVIF/WebP. The output is a web image,
-    not an editable negative.
+    editing. We develop them at half resolution (``half_size=True``) — a usable
+    image at a fraction of the memory/CPU of a full develop — then re-encode to
+    AVIF/WebP. The output is a web image, not an editable negative.
+
+    (Embedded previews were tried first but are unreliable — many DNGs only
+    carry a tiny thumbnail, so a half-res develop gives consistent quality.)
     """
 
     def optimize(self, raw: bytes) -> OptimizationResult:
@@ -427,23 +430,20 @@ class DngOptimizer:
             tmp.flush()
             try:
                 with rawpy.imread(tmp.name) as raw_img:
-                    thumb = raw_img.extract_thumb()
+                    rgb = raw_img.postprocess(
+                        half_size=True,       # ~1/2 dimensions → ~1/4 the pixels
+                        use_camera_wb=True,   # correct colours
+                        no_auto_bright=False,
+                        output_bps=8,
+                    )
             except Exception as exc:
-                raise ValueError(f"Could not read RAW/DNG: {exc}") from exc
+                raise ValueError(f"Could not develop RAW/DNG: {exc}") from exc
 
-        if thumb.format == rawpy.ThumbFormat.JPEG:
-            try:
-                img = Image.open(io.BytesIO(thumb.data))
-                img.load()
-            except Exception as exc:
-                raise ValueError(f"Could not read embedded preview: {exc}") from exc
-        else:  # BITMAP (raw RGB array)
-            try:
-                img = Image.fromarray(thumb.data)
-            except Exception as exc:
-                raise ValueError(f"Could not read embedded preview: {exc}") from exc
+        try:
+            img = Image.fromarray(rgb)
+        except Exception as exc:
+            raise ValueError(f"Could not read developed image: {exc}") from exc
 
-        img = ImageOps.exif_transpose(img)
         return ImageOptimizer().encode_best(
             img, original_size=original_size, original_bytes=raw
         )
