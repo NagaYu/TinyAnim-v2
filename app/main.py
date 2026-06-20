@@ -47,6 +47,8 @@ ALLOWED_EXTENSIONS = {
     ".avif": "image",
     ".bmp": "image",
     ".tiff": "image",
+    # Documents — Ghostscript recompresses embedded images.
+    ".pdf": "pdf",
 }
 
 # Magic-byte prefixes for image content sniffing.
@@ -159,6 +161,8 @@ def _sniff_matches(kind: str, raw: bytes) -> bool:
         if raw[4:8] == b"ftyp":  # HEIC / AVIF / other ISO-BMFF
             return True
         return False
+    if kind == "pdf":
+        return raw[:5] == b"%PDF-"
     return False
 
 
@@ -168,6 +172,8 @@ def _output_filename(original: str, kind: str, output_format: str | None = None)
         ext = ".json"
     elif kind == "svg":
         ext = ".svg"
+    elif kind == "pdf":
+        ext = ".pdf"
     elif kind == "image":
         # Converted output (webp/avif) — or keep original ext if unchanged.
         ext = f".{output_format}" if output_format else PurePosixPath(original or "f.png").suffix or ".png"
@@ -437,6 +443,8 @@ async def api_optimize(
         media_type = "application/json"
     elif kind == "svg":
         media_type = "image/svg+xml"
+    elif kind == "pdf":
+        media_type = "application/pdf"
     else:  # image
         media_type = _IMAGE_MEDIA_TYPES.get(result.output_format or "", "application/octet-stream")
     out_name = _output_filename(file.filename or "file", kind, result.output_format)

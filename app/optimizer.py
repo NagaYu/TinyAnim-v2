@@ -392,10 +392,91 @@ class ImageOptimizer:
 
 
 # --------------------------------------------------------------------------- #
+# PDF optimizer (Ghostscript — downsamples & recompresses embedded images)
+# --------------------------------------------------------------------------- #
+import os  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+
+class PdfOptimizer:
+    """Shrink PDFs via Ghostscript's pdfwrite device.
+
+    Best on image-heavy PDFs (scans, exported decks): Ghostscript downsamples
+    and recompresses embedded images, dedupes, and subsets fonts. This is
+    *lossy* for raster content but tuned to stay readable. Text/vector-only PDFs
+    see little change — in which case the original is returned untouched.
+    """
+
+    #: Resolve the binary once. None when Ghostscript isn't installed.
+    GS_BIN = shutil.which("gs") or shutil.which("gswin64c")
+
+    #: PDFSETTINGS presets: /screen (smallest), /ebook (balanced), /printer.
+    def __init__(self, preset: str = "/ebook", timeout: int = 120) -> None:
+        self.preset = preset
+        self.timeout = timeout
+
+    @classmethod
+    def available(cls) -> bool:
+        return cls.GS_BIN is not None
+
+    def optimize(self, raw: bytes) -> OptimizationResult:
+        if not self.GS_BIN:
+            raise ValueError("PDF optimization is not available on this server.")
+
+        original_size = len(raw)
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "in.pdf")
+            out_path = os.path.join(tmp, "out.pdf")
+            with open(in_path, "wb") as fh:
+                fh.write(raw)
+
+            cmd = [
+                self.GS_BIN,
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.5",
+                f"-dPDFSETTINGS={self.preset}",
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-dQUIET",
+                "-dSAFER",  # restrict file ops — never run an untrusted PDF unsandboxed
+                "-dDetectDuplicateImages=true",
+                "-dCompressFonts=true",
+                "-dSubsetFonts=true",
+                f"-sOutputFile={out_path}",
+                in_path,
+            ]
+            try:
+                subprocess.run(
+                    cmd, check=True, capture_output=True, timeout=self.timeout
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ValueError("PDF took too long to process.") from exc
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or b"").decode("utf-8", "replace")[:200]
+                raise ValueError(f"Could not process PDF: {detail}") from exc
+
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                raise ValueError("PDF processing produced no output.")
+            with open(out_path, "rb") as fh:
+                data = fh.read()
+
+        # Ghostscript can *grow* already-optimized PDFs — keep the original then.
+        if len(data) >= original_size:
+            return OptimizationResult(
+                data=raw, original_size=original_size, optimized_size=original_size
+            )
+        return OptimizationResult(
+            data=data, original_size=original_size, optimized_size=len(data)
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
 def optimize_file(raw: bytes, kind: str, *, precision: int | None = None) -> OptimizationResult:
-    """Optimize ``raw`` bytes for the given ``kind`` (lottie | svg | image)."""
+    """Optimize ``raw`` bytes for the given ``kind`` (lottie | svg | image | pdf)."""
     if kind == "lottie":
         opt = LottieOptimizer(precision=precision if precision is not None else 3)
         return opt.optimize(raw)
@@ -404,4 +485,6 @@ def optimize_file(raw: bytes, kind: str, *, precision: int | None = None) -> Opt
         return opt.optimize(raw)
     if kind == "image":
         return ImageOptimizer().optimize(raw)
+    if kind == "pdf":
+        return PdfOptimizer().optimize(raw)
     raise ValueError(f"Unsupported file kind: {kind!r}")

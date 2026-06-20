@@ -12,6 +12,11 @@ TinyAnim shrinks your assets dramatically while keeping them looking great:
   ~90%.** Photos are re-encoded to the smallest modern codec (AVIF/WebP),
   whichever wins, never larger than the original. This step is *lossy* (the
   pixels are re-encoded) but tuned to be visually near-identical.
+- **PDF — image-heavy docs shrink dramatically (often 50–90%).** Ghostscript
+  downsamples and recompresses embedded images and subsets fonts. Lossy for
+  raster content; text/vector PDFs change little (and are returned untouched if
+  they wouldn't get smaller). Requires Ghostscript — see the bundled
+  `Dockerfile` (the Render deploy uses the Docker runtime for this).
 
 A solid, Apple/Vercel-grade dark UI lets you drag & drop files and instantly see
 the before/after size, reduction percentage and a glowing download button.
